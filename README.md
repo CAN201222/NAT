@@ -4,3 +4,4 @@ Erick Galindo liscanl
 Brayan Ricardo Peña ibica
 Yonier alejandro rocha Valencia 
 José Luis Marulanda triviño
+Juan felipe rojas ipuz
