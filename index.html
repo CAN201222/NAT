@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>topologia — Simulación NAT</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;600;800&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg-0:#06070a;
+    --bg-1:#07101a;
+    --panel:#071722;
+    --muted:#9fb9c8;
+    --accent:#00e6c6;
+    --accent-2:#2da6ff;
+    --alert:#ff6b6b;
+    --glass: rgba(255,255,255,0.03);
+    --radius:14px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial;
+    background: radial-gradient(1200px 400px at 10% 10%, #071423 0%, var(--bg-1) 35%, var(--bg-0) 100%);
+    color:#dff9f6; -webkit-font-smoothing:antialiased;
+    padding:18px;
+  }
+
+  /* header */
+  .header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .brand{display:flex;flex-direction:column}
+  .brand h1{margin:0;font-size:1.2rem;color:var(--accent);letter-spacing:0.6px}
+  .brand p{margin:0;color:var(--muted);font-size:0.82rem}
+
+  .controls{display:flex;gap:10px;align-items:center}
+  .btn{
+    padding:10px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:700;
+    color:#001b1a;background:linear-gradient(135deg,var(--accent),#00b38f);
+    box-shadow:0 8px 30px rgba(0,230,198,0.08);
+    transition:transform .15s ease,box-shadow .15s ease,opacity .15s;
+  }
+  .btn.secondary{ background:linear-gradient(135deg,var(--accent-2),#0b7edb); color:#001a2b; }
+  .btn.warn{ background:linear-gradient(135deg,var(--alert),#c43b3b); color:#fff; }
+  .btn:active{transform:translateY(1px)}
+
+  /* layout */
+  .layout{display:grid;grid-template-columns:1fr 420px;gap:16px;align-items:start}
+  @media (max-width: 1000px){ .layout{grid-template-columns:1fr} }
+
+  /* scene panel */
+  .scene{
+    background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.015));
+    border-radius:var(--radius); padding:18px; position:relative; min-height:560px;
+    border:1px solid rgba(45,166,255,0.06); box-shadow:0 12px 40px rgba(2,6,23,0.6);
+    overflow:hidden;
+  }
+
+  /* subtle grid */
+  .scene::before{
+    content:""; position:absolute; inset:0; background-image: linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px; opacity:0.03; pointer-events:none;
+  }
+
+  /* svg links cover */
+  .links-svg{ position:absolute; inset:0; pointer-events:none; }
+
+  /* internet & router */
+  .node{
+    width:110px;height:110px;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,0.04); text-align:center;
+  }
+  .internet{
+    position:absolute; left:50%; top:36px; transform:translateX(-50%);
+    color:var(--accent-2); font-weight:800; font-size:0.95rem;
+    background:linear-gradient(180deg, rgba(45,166,255,0.06), rgba(45,166,255,0.02));
+    box-shadow:0 6px 40px rgba(45,166,255,0.06), 0 0 28px rgba(45,166,255,0.06);
+    border-radius:20px;
+    padding:8px 12px;
+  }
+  .router{
+    position:absolute; left:50%; top:45%; transform:translate(-50%,-50%);
+    width:140px;height:140px;border-radius:16px;
+    background:linear-gradient(180deg, rgba(0,230,198,0.06), rgba(0,230,198,0.02));
+    color:var(--accent); font-weight:800; font-size:0.95rem;
+    box-shadow:0 18px 60px rgba(0,230,198,0.07);
+    display:flex;align-items:center;justify-content:center;flex-direction:column;
+  }
+  .router .label{font-size:0.86rem; margin-top:6px; color:#052222}
+
+  /* devices */
+  .device{
+    position:absolute; width:96px; height:96px; border-radius:12px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    color:#cfefff; font-weight:700; font-size:0.78rem;
+    background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));
+    border:1px solid rgba(255,255,255,0.03);
+    box-shadow: 0 10px 30px rgba(2,6,23,0.6);
+    transition: transform .22s cubic-bezier(.2,.9,.2,1), box-shadow .2s;
+    overflow:hidden;
+  }
+  .device:hover{ transform:translateY(-8px) scale(1.04); box-shadow:0 22px 46px rgba(2,6,23,0.9) }
+
+  .device .icon{ font-size:1.6rem; }
+  .device .name{ font-size:0.76rem; color:#dff9f6; opacity:0.95; text-align:center }
+
+  /* pulse on active */
+  .pulse {
+    position:absolute;border-radius:50%;pointer-events:none; opacity:0.06;
+    box-shadow:0 0 60px 18px rgba(0,230,198,0.08);
+    animation: pulse 2.2s infinite;
+  }
+  @keyframes pulse{0%{transform:scale(.9);opacity:.12}100%{transform:scale(2.2);opacity:0}}
+
+  /* side panel */
+  .panel{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--glass); border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.03)}
+  .kpis{display:flex;gap:8px}
+  .kpi{flex:1;padding:10px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);text-align:center}
+  .kpi .v{font-weight:800;font-size:1.2rem}
+  .kpi .l{font-size:0.82rem;color:var(--muted)}
+
+  .progress{height:12px;background:rgba(255,255,255,0.02);border-radius:8px;overflow:hidden;margin-top:8px}
+  .progress .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .45s ease}
+
+  .log{font-family:ui-monospace,Menlo,monospace;font-size:0.82rem;color:#9fe9df;max-height:220px;overflow:auto;padding:6px;background:transparent}
+
+  /* table bottom */
+  .table-wrap{margin-top:16px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.03)}
+  table{width:100%;border-collapse:collapse;background:transparent}
+  thead th{background:rgba(0,0,0,0.35);text-align:left;padding:10px;color:var(--muted);font-size:0.85rem}
+  tbody td{padding:10px;border-top:1px solid rgba(255,255,255,0.03);color:#dff9f6;font-size:0.9rem}
+  tbody tr:hover td{background:linear-gradient(90deg, rgba(0,230,198,0.02), rgba(45,166,255,0.02))}
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <h1>Simulación NAT</h1>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="btnNat">Simular con NAT</button>
+      <button class="btn secondary" id="btnSinNat">Simular sin NAT</button>
+      <button class="btn warn" id="btnClear">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- Scene -->
+    <div class="scene" id="scene">
+      <svg class="links-svg" id="svgLinks" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice"></svg>
+
+      <div class="internet" id="internetNode">INTERNET</div>
+      <div class="router" id="routerNode"><div style="font-size:1.2rem">ROUTER</div><div class="label">NAT</div></div>
+      <!-- devices will be injected here by JS -->
+    </div>
+
+    <!-- Side panel -->
+    <aside class="panel">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700"></div>
+          <div style="font-size:0.85rem;color:var(--muted)" id="modeLabel">Modo: -</div>
+        </div>
+
+        <div class="kpis" style="margin-top:10px">
+          <div class="kpi"><div class="v" id="kOk">0</div><div class="l">Exitosas</div></div>
+          <div class="kpi"><div class="v" id="kFail">0</div><div class="l">Fallidas</div></div>
+          <div class="kpi"><div class="v" id="kTotal">0</div><div class="l">Dispositivos</div></div>
+        </div>
+
+        <div style="margin-top:10px">
+          <div style="font-weight:700;color:var(--muted)">Tasa de éxito</div>
+          <div class="progress"><div class="fill" id="prog"></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:8px">Log</div>
+        <div class="log" id="logArea"></div>
+      </div>
+
+      <div class="card table-wrap">
+        <table>
+          <thead><tr><th>Dispositivo</th><th>IP Privada</th><th>Solicitud</th><th>IP Pública</th><th>Puerto</th><th>Estado</th></tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </aside>
+  </div>
+
+<script>
+/* ====== Datos base ====== */
+const devicesBase = [
+  { nombre: "Laptop Oficina", icon:"💻", solicitud:"Conectar a Teams" },
+  { nombre: "PC Escritorio", icon:"🖥", solicitud:"Abrir Google" },
+  { nombre: "Smartphone", icon:"📱", solicitud:"Entrar a WhatsApp Web" },
+  { nombre: "Tablet", icon:"📟", solicitud:"Revisar correo Gmail" },
+  { nombre: "Smart TV", icon:"📺", solicitud:"Ver Netflix" },
+  { nombre: "Impresora WiFi", icon:"🖨", solicitud:"Enviar reporte a servidor" },
+  { nombre: "Servidor Local", icon:"🗄", solicitud:"Subir archivos al Drive" }
+];
+
+const scene = document.getElementById('scene');
+const svgLinks = document.getElementById('svgLinks');
+const routerNode = document.getElementById('routerNode');
+const internetNode = document.getElementById('internetNode');
+const tableBody = document.getElementById('tableBody');
+const logArea = document.getElementById('logArea');
+const kOk = document.getElementById('kOk'), kFail = document.getElementById('kFail'), kTotal = document.getElementById('kTotal');
+const prog = document.getElementById('prog'), modeLabel = document.getElementById('modeLabel');
+
+let activeDevices = []; // {data, el, ipPriv, ipPub, puerto, success}
+let linkAnimInterval = null;
+
+/* ====== Helpers ====== */
+function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function clearScene(){
+  // remove device nodes
+  activeDevices.forEach(d=>d.el.remove());
+  activeDevices = [];
+  // clear table & logs & links
+  tableBody.innerHTML = '';
+  logArea.innerHTML = '';
+  svgLinks.innerHTML = '';
+  kOk.textContent=0; kFail.textContent=0; kTotal.textContent=0; prog.style.width='0%';
+  modeLabel.textContent='Modo: -';
+  stopLinkAnimation();
+}
+
+/* log */
+function appendLog(txt){
+  const line = document.createElement('div');
+  const t = new Date().toLocaleTimeString();
+  line.textContent = `${t} • ${txt}`;
+  logArea.prepend(line);
+  // limit lines
+  while(logArea.children.length > 80) logArea.removeChild(logArea.lastChild);
+}
+
+/* create device elements and distribute evenly in arc around router */
+/* This function ensures devices are visible and non-overlapping. Uses one or two rings as needed. */
+function placeDevices(count){
+  // remove existing device elements (if any)
+  activeDevices.forEach(d=>d.el.remove());
+  activeDevices = [];
+
+  // pick random devices
+  const chosen = devicesBase.slice().sort(()=>0.5 - Math.random()).slice(0,count);
+
+  const sceneRect = scene.getBoundingClientRect();
+  const routerRect = routerNode.getBoundingClientRect();
+  const centerX = (routerRect.left + routerRect.width/2) - sceneRect.left;
+  const centerY = (routerRect.top + routerRect.height/2) - sceneRect.top;
+
+  // max radius so devices stay inside scene
+  const maxRadius = Math.min(sceneRect.width, sceneRect.height) * 0.38;
+  const outerRadius = Math.max(180, Math.min(340, maxRadius));
+  const innerRadius = Math.max(110, outerRadius * 0.58);
+
+  // if small count, use single ring; if larger, use two rings
+  const useTwoRings = count > 6;
+  let ring1Count = useTwoRings ? Math.ceil(count/2) : count;
+  let ring2Count = useTwoRings ? count - ring1Count : 0;
+
+  // angle spans (bottom semicircle under router)
+  const startDeg = 210, endDeg = -30;
+  // helper to place on ring
+  function placeOnRing(n, radius, offsetIndex=0){
+    for(let i=0;i<n;i++){
+      const t = (n===1) ? 0.5 : i/(n-1);
+      const angleDeg = startDeg + (endDeg - startDeg) * t;
+      const angle = angleDeg * Math.PI / 180;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+
+      const el = document.createElement('div');
+      el.className = 'device';
+      el.innerHTML = `<div class="icon">${chosen[offsetIndex + i].icon}</div><div class="name">${chosen[offsetIndex + i].nombre}</div>`;
+      scene.appendChild(el);
+
+      // measure then position centered
+      const elRect = el.getBoundingClientRect();
+      const left = x - sceneRect.left - elRect.width/2;
+      const top  = y - sceneRect.top  - elRect.height/2;
+      el.style.left = `${Math.max(8, Math.min(sceneRect.width - elRect.width - 8, left))}px`;
+      el.style.top  = `${Math.max(8, Math.min(sceneRect.height - elRect.height - 8, top))}px`;
+
+      activeDevices.push({data: chosen[offsetIndex + i], el, ipPriv:null, ipPub:null, puerto:null, success:null});
+    }
+  }
+
+  // place ring1 (inner if two rings, else outer)
+  if(useTwoRings){
+    placeOnRing(ring1Count, innerRadius, 0);
+    placeOnRing(ring2Count, outerRadius, ring1Count);
+  } else {
+    placeOnRing(ring1Count, outerRadius, 0);
+  }
+
+  return activeDevices;
+}
+
+/* draw SVG links based on mode */
+function drawLinks(mode){
+  // mode: 'nat' | 'sinnat'
+  svgLinks.innerHTML = '';
+  const sRect = scene.getBoundingClientRect();
+  const r = routerNode.getBoundingClientRect();
+  const i = internetNode.getBoundingClientRect();
+  // convert rect centers to scene coords
+  const rCenter = {x: r.left + r.width/2 - sRect.left, y: r.top + r.height/2 - sRect.top};
+  const iCenter = {x: i.left + i.width/2 - sRect.left, y: i.top + i.height/2 - sRect.top};
+
+  // defs for gradient
+  const defs = document.createElementNS("http://www.w3.org/2000/svg","defs");
+  const g = document.createElementNS("http://www.w3.org/2000/svg","linearGradient");
+  g.setAttribute('id','g1'); g.setAttribute('x1','0%'); g.setAttribute('y1','0%'); g.setAttribute('x2','100%'); g.setAttribute('y2','0%');
+  const stop1 = document.createElementNS("http://www.w3.org/2000/svg","stop"); stop1.setAttribute('offset','0%'); stop1.setAttribute('stop-color','#00e6c6');
+  const stop2 = document.createElementNS("http://www.w3.org/2000/svg","stop"); stop2.setAttribute('offset','100%'); stop2.setAttribute('stop-color','#2da6ff');
+  g.appendChild(stop1); g.appendChild(stop2); defs.appendChild(g); svgLinks.appendChild(defs);
+
+  if(mode==='nat'){
+    // router -> internet curved path
+    const main = document.createElementNS("http://www.w3.org/2000/svg","path");
+    const mx = (rCenter.x + iCenter.x)/2;
+    const d = `M ${rCenter.x} ${rCenter.y} Q ${mx} ${rCenter.y - 120} ${iCenter.x} ${iCenter.y}`;
+    main.setAttribute('d', d);
+    main.setAttribute('stroke','url(#g1)');
+    main.setAttribute('stroke-width','3.4');
+    main.setAttribute('fill','none');
+    main.setAttribute('stroke-linecap','round');
+    main.setAttribute('class','flowPath');
+    svgLinks.appendChild(main);
+  }
+
+  // device -> router OR device -> internet
+  activeDevices.forEach(dev=>{
+    const p = dev.el.getBoundingClientRect();
+    const pCenter = {x: p.left + p.width/2 - sRect.left, y: p.top + p.height/2 - sRect.top};
+
+    if(mode==='nat'){
+      // curved to router
+      const line = document.createElementNS("http://www.w3.org/2000/svg","path");
+      const cx = (pCenter.x + rCenter.x)/2;
+      const cy = Math.min(pCenter.y, rCenter.y) - 30;
+      const d2 = `M ${pCenter.x} ${pCenter.y} Q ${cx} ${cy} ${rCenter.x} ${rCenter.y}`;
+      line.setAttribute('d', d2);
+      line.setAttribute('stroke','rgba(0,230,198,0.95)');
+      line.setAttribute('stroke-width','2.2');
+      line.setAttribute('fill','none'); line.setAttribute('stroke-linecap','round');
+      line.setAttribute('class','flowPath');
+      svgLinks.appendChild(line);
+    } else {
+      // direct to internet
+      const line = document.createElementNS("http://www.w3.org/2000/svg","path");
+      const cx = (pCenter.x + iCenter.x)/2;
+      const cy = Math.min(pCenter.y, iCenter.y) - 30;
+      const d2 = `M ${pCenter.x} ${pCenter.y} Q ${cx} ${cy} ${iCenter.x} ${iCenter.y}`;
+      line.setAttribute('d', d2);
+      line.setAttribute('stroke','rgba(45,166,255,0.95)');
+      line.setAttribute('stroke-width','2.2');
+      line.setAttribute('fill','none'); line.setAttribute('stroke-linecap','round');
+      line.setAttribute('class','flowPath');
+      svgLinks.appendChild(line);
+    }
+  });
+
+  // animate stroke-dashoffset to simulate flow
+  startLinkAnimation();
+}
+
+/* animate stroke dashoffset on .flowPath */
+function startLinkAnimation(){
+  stopLinkAnimation();
+  const paths = svgLinks.querySelectorAll('.flowPath');
+  paths.forEach(p=>{
+    const len = p.getTotalLength ? p.getTotalLength() : 400;
+    p.style.strokeDasharray = `${Math.max(40, len/25)} ${Math.max(40, len/8)}`;
+    p.style.strokeDashoffset = '0';
+    p.style.transition = 'stroke-dashoffset 0.9s linear';
+  });
+  linkAnimInterval = setInterval(()=>{
+    svgLinks.querySelectorAll('.flowPath').forEach(p=>{
+      const cur = parseFloat(p.style.strokeDashoffset) || 0;
+      p.style.strokeDashoffset = (cur - 8) + 'px';
+    });
+  }, 90);
+}
+function stopLinkAnimation(){ if(linkAnimInterval) clearInterval(linkAnimInterval); linkAnimInterval = null; }
+
+/* ===== UI updates: table, KPIs ===== */
+function addTableRow(dev){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${dev.data.nombre}</td><td>${dev.ipPriv}</td><td>${dev.data.solicitud}</td><td>${dev.ipPub}</td><td>${dev.puerto ?? '-'}</td><td style="color:${dev.success? 'var(--accent)':'var(--alert)'}">${dev.success? 'OK':'FALLA'}</td>`;
+  tableBody.appendChild(tr);
+}
+
+function updateKPIs(ok, fail){
+  kOk.textContent = ok; kFail.textContent = fail; kTotal.textContent = activeDevices.length;
+  const pct = activeDevices.length? Math.round(ok/activeDevices.length*100):0;
+  prog.style.width = pct + '%';
+}
+
+/* simulation functions */
+function simulateNAT(){
+  clearScene();
+  modeLabel.textContent = 'Modo: Con NAT';
+  const total = rnd(3,6);
+  placeDevices(total);
+  // small delay to allow layout
+  setTimeout(()=>{
+    const ipPublic = `181.50.23.${rnd(10,200)}`;
+    let ok=0,fail=0;
+    activeDevices.forEach((dev,i)=>{
+      dev.ipPriv = `192.168.1.${10+i}`; dev.ipPub = ipPublic; dev.puerto = 5000 + i + 1;
+      dev.success = Math.random() > 0.06;
+      addTableRow(dev);
+      appendLog(`${dev.data.nombre} → ${dev.data.solicitud} | NAT → ${dev.ipPub}:${dev.puerto} • ${dev.success? 'OK':'FALLA'}`);
+      if(dev.success) ok++; else fail++;
+    });
+    updateKPIs(ok,fail);
+    drawLinks('nat');
+  },120);
+}
+
+function simulateSinNAT(){
+  clearScene();
+  modeLabel.textContent = 'Modo: Sin NAT';
+  const total = rnd(3,6);
+  placeDevices(total);
+  setTimeout(()=>{
+    let ok=0,fail=0;
+    activeDevices.forEach((dev,i)=>{
+      dev.ipPriv = `192.168.1.${10+i}`; dev.ipPub = `181.50.23.${50+i}`; dev.puerto = null;
+      dev.success = Math.random() > 0.04;
+      addTableRow(dev);
+      appendLog(`${dev.data.nombre} → ${dev.data.solicitud} | SIN NAT → ${dev.ipPub} • ${dev.success? 'OK':'FALLA'}`);
+      if(dev.success) ok++; else fail++;
+    });
+    updateKPIs(ok,fail);
+    drawLinks('sinnat');
+  },120);
+}
+
+/* attach buttons */
+document.getElementById('btnNat').addEventListener('click', simulateNAT);
+document.getElementById('btnSinNat').addEventListener('click', simulateSinNAT);
+document.getElementById('btnClear').addEventListener('click', ()=>{ clearScene(); stopLinkAnimation(); });
+
+/* responsive: reposition devices on resize to preserve professional distribution */
+let resizeTimer;
+window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(()=>{
+  const count = activeDevices.length;
+  const dataList = activeDevices.map(d=>d.data);
+  if(count>0){
+    // rebuild using same data
+    activeDevices.forEach(d=>d.el.remove());
+    activeDevices = [];
+    const sceneRect = scene.getBoundingClientRect();
+    const routerRect = routerNode.getBoundingClientRect();
+    const centerX = (routerRect.left + routerRect.width/2) - sceneRect.left;
+    const centerY = (routerRect.top + routerRect.height/2) - sceneRect.top;
+    const maxRadius = Math.min(sceneRect.width, sceneRect.height) * 0.38;
+    const outerRadius = Math.max(180, Math.min(340, maxRadius));
+    const innerRadius = Math.max(110, outerRadius * 0.58);
+    const useTwoRings = count > 6;
+    const ring1Count = useTwoRings ? Math.ceil(count/2) : count;
+    const ring2Count = useTwoRings ? count - ring1Count : 0;
+    const start = 210 * Math.PI/180, end = -30 * Math.PI/180;
+    function placeOnRing(n, radius, offsetIndex=0){
+      for(let i=0;i<n;i++){
+        const t = (n===1)?0.5: i/(n-1);
+        const angle = start + (end - start)*t;
+        const x = centerX + Math.cos(angle)*radius;
+        const y = centerY + Math.sin(angle)*radius;
+        const d = dataList[offsetIndex + i] || devicesBase[offsetIndex + i];
+        const el = document.createElement('div'); el.className='device';
+        el.innerHTML = `<div class="icon">${d.icon}</div><div class="name">${d.nombre}</div>`;
+        scene.appendChild(el);
+        const sRect = scene.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        el.style.left = (x - sRect.left - elRect.width/2) + 'px';
+        el.style.top  = (y - sRect.top  - elRect.height/2) + 'px';
+        activeDevices.push({data:d, el, ipPriv:null, ipPub:null, puerto:null, success:null});
+      }
+    }
+    if(useTwoRings){
+      placeOnRing(ring1Count, innerRadius, 0);
+      placeOnRing(ring2Count, outerRadius, ring1Count);
+    } else {
+      placeOnRing(ring1Count, outerRadius, 0);
+    }
+    // redraw links accordingly
+    if(modeLabel.textContent.includes('Con NAT')) drawLinks('nat');
+    else if(modeLabel.textContent.includes('Sin NAT')) drawLinks('sinnat');
+  } else {
+    svgLinks.innerHTML = '';
+  }
+},200) });
+
+/* initial hint */
+appendLog('Interfaz lista. Presiona "Simular con NAT" o "Simular sin NAT".');
+</script>
+</body>
+</html>
